@@ -2,155 +2,160 @@
 //  Logger.swift
 //  ZiApp
 //
-//  Centralized logging system
+//  Centralized logging system for debugging and analytics
 //
 
 import Foundation
 import os.log
 
-class Logger {
+/// Centralized logging utility for the app
+final class Logger {
     static let shared = Logger()
     
-    private let subsystem = Bundle.main.bundleIdentifier ?? "com.zi.app"
-    private var loggers: [String: OSLog] = [:]
+    private let subsystem = "com.ziapp.chinese"
+    private let osLog: OSLog
     
+    private init() {
+        self.osLog = OSLog(subsystem: subsystem, category: "general")
+    }
+    
+    // MARK: - Log Levels
     enum LogLevel: String {
-        case debug = "🔍 DEBUG"
-        case info = "ℹ️ INFO"
-        case warning = "⚠️ WARNING"
-        case error = "❌ ERROR"
-        case critical = "🔥 CRITICAL"
+        case debug = "DEBUG"
+        case info = "INFO"
+        case warning = "WARNING"
+        case error = "ERROR"
+        case critical = "CRITICAL"
         
         var osLogType: OSLogType {
             switch self {
-            case .debug: return .debug
-            case .info: return .info
-            case .warning: return .default
-            case .error: return .error
-            case .critical: return .fault
+            case .debug:
+                return .debug
+            case .info:
+                return .info
+            case .warning:
+                return .default
+            case .error:
+                return .error
+            case .critical:
+                return .fault
+            }
+        }
+        
+        var emoji: String {
+            switch self {
+            case .debug: return "🔍"
+            case .info: return "ℹ️"
+            case .warning: return "⚠️"
+            case .error: return "❌"
+            case .critical: return "🔥"
             }
         }
     }
     
-    private init() {}
-    
-    // MARK: - Public Methods
-    
-    func debug(_ message: String, category: String = "General", file: String = #file, function: String = #function, line: Int = #line) {
-        log(message, level: .debug, category: category, file: file, function: function, line: line)
-    }
-    
-    func info(_ message: String, category: String = "General", file: String = #file, function: String = #function, line: Int = #line) {
-        log(message, level: .info, category: category, file: file, function: function, line: line)
-    }
-    
-    func warning(_ message: String, category: String = "General", file: String = #file, function: String = #function, line: Int = #line) {
-        log(message, level: .warning, category: category, file: file, function: function, line: line)
-    }
-    
-    func error(_ message: String, category: String = "General", file: String = #file, function: String = #function, line: Int = #line) {
-        log(message, level: .error, category: category, file: file, function: function, line: line)
-    }
-    
-    func critical(_ message: String, category: String = "General", file: String = #file, function: String = #function, line: Int = #line) {
-        log(message, level: .critical, category: category, file: file, function: function, line: line)
-    }
-    
-    // MARK: - Private Methods
-    
-    private func log(_ message: String, level: LogLevel, category: String, file: String, function: String, line: Int) {
-        let logger = getLogger(for: category)
-        let fileName = URL(fileURLWithPath: file).lastPathComponent
+    // MARK: - Public Logging Methods
+    func log(_ message: String,
+             level: LogLevel = .info,
+             file: String = #file,
+             function: String = #function,
+             line: Int = #line) {
         
-        let logMessage = "\(level.rawValue) [\(fileName):\(line)] \(function): \(message)"
+        let filename = URL(fileURLWithPath: file).lastPathComponent
+        let formattedMessage = formatMessage(message,
+                                            level: level,
+                                            file: filename,
+                                            function: function,
+                                            line: line)
         
         // OS Log
-        os_log("%{public}@", log: logger, type: level.osLogType, logMessage)
+        os_log("%{public}@", log: osLog, type: level.osLogType, formattedMessage)
         
-        // Console log in debug mode
+        // Console log for debugging
         #if DEBUG
-        print(logMessage)
+        print(formattedMessage)
         #endif
         
-        // Send to analytics for errors
-        if level == .error || level == .critical {
-            recordError(message: message, metadata: [
-                "file": fileName,
-                "function": function,
-                "line": "\(line)",
-                "category": category
-            ])
-        }
+        // Store in memory for later analysis
+        storeLog(formattedMessage, level: level)
     }
     
-    private func getLogger(for category: String) -> OSLog {
-        if let existingLogger = loggers[category] {
-            return existingLogger
-        }
-        
-        let newLogger = OSLog(subsystem: subsystem, category: category)
-        loggers[category] = newLogger
-        return newLogger
+    func debug(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
+        log(message, level: .debug, file: file, function: function, line: line)
     }
     
-    private func recordError(message: String, metadata: [String: String]) {
-        // Send to analytics service (Firebase, Crashlytics, etc.)
-        // AnalyticsService.shared.logError(message, metadata: metadata)
+    func info(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
+        log(message, level: .info, file: file, function: function, line: line)
+    }
+    
+    func warning(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
+        log(message, level: .warning, file: file, function: function, line: line)
+    }
+    
+    func error(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
+        log(message, level: .error, file: file, function: function, line: line)
+    }
+    
+    func critical(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
+        log(message, level: .critical, file: file, function: function, line: line)
     }
     
     // MARK: - Performance Logging
-    
-    func measureTime<T>(label: String, operation: () throws -> T) rethrows -> T {
+    func logPerformance<T>(operation: String, block: () throws -> T) rethrows -> T {
         let startTime = CFAbsoluteTimeGetCurrent()
-        
         defer {
             let timeElapsed = CFAbsoluteTimeGetCurrent() - startTime
-            
-            if timeElapsed > 1.0 {
-                warning("Slow operation: \(label) took \(String(format: "%.2f", timeElapsed))s")
-            } else {
-                debug("Operation \(label) completed in \(String(format: "%.3f", timeElapsed))s")
-            }
+            log("⏱ \(operation) took \(String(format: "%.3f", timeElapsed)) seconds", level: .debug)
         }
-        
-        return try operation()
+        return try block()
     }
     
-    // MARK: - Network Logging
-    
-    func logNetworkRequest(url: String, method: String, headers: [String: String]? = nil) {
-        var message = "Network Request: \(method) \(url)"
-        
-        if let headers = headers, !headers.isEmpty {
-            message += "\nHeaders: \(headers)"
-        }
-        
-        debug(message, category: "Network")
+    // MARK: - Private Methods
+    private func formatMessage(_ message: String,
+                              level: LogLevel,
+                              file: String,
+                              function: String,
+                              line: Int) -> String {
+        let timestamp = DateFormatter.logTimestamp.string(from: Date())
+        return "\(level.emoji) [\(timestamp)] [\(level.rawValue)] [\(file):\(line)] \(function) - \(message)"
     }
     
-    func logNetworkResponse(url: String, statusCode: Int, responseTime: TimeInterval) {
-        let message = "Network Response: \(url)\nStatus: \(statusCode)\nTime: \(String(format: "%.3f", responseTime))s"
+    private var logBuffer: [LogEntry] = []
+    private let maxBufferSize = 1000
+    
+    private func storeLog(_ message: String, level: LogLevel) {
+        let entry = LogEntry(timestamp: Date(), message: message, level: level)
         
-        if statusCode >= 400 {
-            error(message, category: "Network")
-        } else {
-            debug(message, category: "Network")
+        if logBuffer.count >= maxBufferSize {
+            logBuffer.removeFirst()
         }
+        logBuffer.append(entry)
     }
     
-    // MARK: - Database Logging
-    
-    func logDatabaseOperation(_ operation: String, success: Bool, recordCount: Int? = nil) {
-        var message = "Database: \(operation)"
-        
-        if let count = recordCount {
-            message += " (\(count) records)"
-        }
-        
-        if success {
-            debug("\(message) - Success", category: "Database")
-        } else {
-            error("\(message) - Failed", category: "Database")
-        }
+    // MARK: - Log Export
+    func exportLogs() -> String {
+        return logBuffer.map { entry in
+            "\(DateFormatter.logTimestamp.string(from: entry.timestamp)) [\(entry.level.rawValue)] \(entry.message)"
+        }.joined(separator: "\n")
     }
+    
+    func clearLogs() {
+        logBuffer.removeAll()
+        log("Log buffer cleared", level: .info)
+    }
+}
+
+// MARK: - Log Entry Model
+private struct LogEntry {
+    let timestamp: Date
+    let message: String
+    let level: Logger.LogLevel
+}
+
+// MARK: - DateFormatter Extension
+private extension DateFormatter {
+    static let logTimestamp: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        return formatter
+    }()
 }

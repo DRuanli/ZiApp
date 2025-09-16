@@ -2,7 +2,7 @@
 //  Word.swift
 //  ZiApp
 //
-//  Core data model for Chinese vocabulary words
+//  SwiftData model for Chinese vocabulary words
 //
 
 import Foundation
@@ -10,120 +10,165 @@ import SwiftData
 
 @Model
 final class Word {
-    // MARK: - Core Properties
-    @Attribute(.unique)
-    var id: Int
+    @Attribute(.unique) var id: Int
     var hanzi: String
     var pinyin: String
     var meaning: String
     var hskLevel: Int
     
-    // MARK: - Premium Content
+    // Premium features
     var exampleSentence: String?
-    var exampleTranslation: String?
     var audioFileName: String?
     
-    // MARK: - Learning Progress
-    var timesSeen: Int = 0
-    var timesCorrect: Int = 0
-    var timesIncorrect: Int = 0
-    var lastSeenDate: Date = Date.distantPast
-    var firstSeenDate: Date?
+    // Progress tracking
+    var timesSeen: Int
+    var timesCorrect: Int
+    var lastSeen: Date
     
-    // MARK: - SRS Properties (Premium)
-    var easeFactor: Double = 2.5
-    var interval: Int = 0
-    var repetitions: Int = 0
-    var nextReviewDate: Date = Date()
-    var lastReviewQuality: Int?
+    // SRS properties for Premium
+    var easeFactor: Double
+    var interval: Int
+    var nextReviewDate: Date
     
-    // MARK: - User Interaction
-    var isFavorited: Bool = false
+    // User customization
+    var isFavorite: Bool
     var userNotes: String?
+    var tags: [String]
     
-    // MARK: - Metadata
-    var createdAt: Date = Date()
-    var updatedAt: Date = Date()
-    var dataVersion: String = "1.2"
+    // Statistics
+    var averageResponseTime: TimeInterval
+    var lastResponseTime: TimeInterval?
     
-    // MARK: - Computed Properties
-    var isNewWord: Bool {
-        timesSeen == 0
-    }
-    
-    var isDue: Bool {
-        nextReviewDate <= Date()
-    }
-    
-    var accuracyRate: Double {
-        guard timesCorrect + timesIncorrect > 0 else { return 0 }
-        return Double(timesCorrect) / Double(timesCorrect + timesIncorrect)
-    }
-    
-    var daysSinceLastSeen: Int {
-        Calendar.current.dateComponents([.day], from: lastSeenDate, to: Date()).day ?? 0
-    }
-    
-    // MARK: - Priority Score for Free Users
-    var priorityScore: Int {
-        let correctPenalty = timesCorrect * 20
-        let recentPenalty = daysSinceLastSeen < 1 ? 50 : 0
-        return correctPenalty + recentPenalty
-    }
-    
-    // MARK: - Initialization
-    init(
-        id: Int,
-        hanzi: String,
-        pinyin: String,
-        meaning: String,
-        hskLevel: Int,
-        exampleSentence: String? = nil,
-        exampleTranslation: String? = nil,
-        audioFileName: String? = nil
-    ) {
+    init(id: Int,
+         hanzi: String,
+         pinyin: String,
+         meaning: String,
+         hskLevel: Int,
+         exampleSentence: String? = nil,
+         audioFileName: String? = nil) {
+        
         self.id = id
         self.hanzi = hanzi
         self.pinyin = pinyin
         self.meaning = meaning
         self.hskLevel = hskLevel
         self.exampleSentence = exampleSentence
-        self.exampleTranslation = exampleTranslation
         self.audioFileName = audioFileName
+        
+        // Initialize progress tracking
+        self.timesSeen = 0
+        self.timesCorrect = 0
+        self.lastSeen = Date.distantPast
+        
+        // Initialize SRS properties
+        self.easeFactor = 2.5
+        self.interval = 0
+        self.nextReviewDate = Date()
+        
+        // Initialize user customization
+        self.isFavorite = false
+        self.tags = []
+        
+        // Initialize statistics
+        self.averageResponseTime = 0
+    }
+    
+    // MARK: - Computed Properties
+    var accuracy: Double {
+        guard timesSeen > 0 else { return 0 }
+        return Double(timesCorrect) / Double(timesSeen)
+    }
+    
+    var masteryLevel: MasteryLevel {
+        switch accuracy {
+        case 0..<0.3:
+            return .beginner
+        case 0.3..<0.6:
+            return .learning
+        case 0.6..<0.85:
+            return .familiar
+        default:
+            return .mastered
+        }
+    }
+    
+    var isNewWord: Bool {
+        return timesSeen == 0
+    }
+    
+    var isDue: Bool {
+        return nextReviewDate <= Date()
+    }
+    
+    var daysSinceLastSeen: Int {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.day], from: lastSeen, to: Date())
+        return components.day ?? 0
     }
     
     // MARK: - Methods
-    func markAsSeen(wasCorrect: Bool) {
+    func recordReview(quality: Int, responseTime: TimeInterval) {
         timesSeen += 1
-        lastSeenDate = Date()
+        lastSeen = Date()
         
-        if firstSeenDate == nil {
-            firstSeenDate = Date()
-        }
-        
-        if wasCorrect {
+        if quality >= 3 {
             timesCorrect += 1
-        } else {
-            timesIncorrect += 1
         }
         
-        updatedAt = Date()
+        // Update response time statistics
+        lastResponseTime = responseTime
+        if averageResponseTime == 0 {
+            averageResponseTime = responseTime
+        } else {
+            averageResponseTime = (averageResponseTime * Double(timesSeen - 1) + responseTime) / Double(timesSeen)
+        }
     }
     
-    func resetProgress() {
-        timesSeen = 0
-        timesCorrect = 0
-        timesIncorrect = 0
-        lastSeenDate = Date.distantPast
-        firstSeenDate = nil
-        
-        // Reset SRS
-        easeFactor = 2.5
-        interval = 0
-        repetitions = 0
-        nextReviewDate = Date()
-        lastReviewQuality = nil
-        
-        updatedAt = Date()
+    func toggleFavorite() {
+        isFavorite.toggle()
+    }
+    
+    func addTag(_ tag: String) {
+        if !tags.contains(tag) {
+            tags.append(tag)
+        }
+    }
+    
+    func removeTag(_ tag: String) {
+        tags.removeAll { $0 == tag }
+    }
+}
+
+// MARK: - Mastery Level
+enum MasteryLevel: String, CaseIterable {
+    case beginner = "Beginner"
+    case learning = "Learning"
+    case familiar = "Familiar"
+    case mastered = "Mastered"
+    
+    var color: String {
+        switch self {
+        case .beginner:
+            return "red"
+        case .learning:
+            return "orange"
+        case .familiar:
+            return "yellow"
+        case .mastered:
+            return "green"
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .beginner:
+            return "star"
+        case .learning:
+            return "star.lefthalf.fill"
+        case .familiar:
+            return "star.fill"
+        case .mastered:
+            return "star.circle.fill"
+        }
     }
 }

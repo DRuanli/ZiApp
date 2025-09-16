@@ -1,456 +1,223 @@
 //
 //  DataService.swift
-//  Zi
+//  ZiApp
 //
-//  Core data service for managing vocabulary and learning progress
+//  Core data management and business logic service
 //
 
 import Foundation
 import SwiftData
-import SwiftUI
 
 @MainActor
-class DataService: ObservableObject {
+final class DataService {
     static let shared = DataService()
     
-    private let container: SwiftDataContainer
-    private let context: ModelContext
+    private let container = SwiftDataContainer.shared
+    private let logger = Logger.shared
     
-    // Cache for performance
-    private var wordCache: [Int: Word] = [:]
-    private var lastCacheUpdate: Date = Date()
+    private init() {}
     
-    private init() {
-        self.container = SwiftDataContainer.shared
-        self.context = container.mainContext
-    }
-    
-    // MARK: - Word Management
-    
-    /// Fetch words for a learning session
-    func fetchWordsForSession(
-        levels: [Int],
-        isPremium: Bool,
-        dailyLimit: Int = Constants.Learning.dailyFreeLimit
-    ) async throws -> [Word] {
-        
-        Logger.shared.info("Fetching words for session - Levels: \(levels), Premium: \(isPremium)")
-        
-        if isPremium {
-            return try await fetchPremiumWords(levels: levels, limit: dailyLimit)
-        } else {
-            return try await fetchFreeWords(levels: levels, limit: dailyLimit)
-        }
-    }
-    
-    /// Fetch words for free users using priority scoring
-    private func fetchFreeWords(levels: [Int], limit: Int) async throws -> [Word] {
-        let descriptor = FetchDescriptor<Word>(
-            predicate: #Predicate<Word> { word in
-                levels.contains(word.hskLevel)
-            },
-            sortBy: [SortDescriptor(\.id)]
-        )
-        
-        let allWords = try context.fetch(descriptor)
-        
-        // Calculate priority scores
-        let scoredWords = allWords.map { word -> (Word, Int) in
-            let score = calculatePriorityScore(for: word)
-            return (word, score)
+    // MARK: - Initial Data Bootstrap
+    func bootstrapInitialData(from jsonFile: String, version: String) async {
+        // Check if data already loaded
+        let currentVersion = UserDefaults.standard.string(forKey: "data_version")
+        if currentVersion == version {
+            logger.log("Data already at version \(version), skipping bootstrap", level: .info)
+            return
         }
         
-        // Sort by priority (lower score = higher priority)
-        let sortedWords = scoredWords
-            .sorted { $0.1 < $1.1 }
-            .prefix(limit * 2) // Get more for variety
-            .map { $0.0 }
-            .shuffled()
-            .prefix(limit)
-        
-        return Array(sortedWords)
-    }
-    
-    /// Fetch words for premium users using SRS
-    private func fetchPremiumWords(levels: [Int], limit: Int) async throws -> [Word] {
-        let today = Date()
-        
-        // First, get due reviews
-        let dueDescriptor = FetchDescriptor<Word>(
-            predicate: #Predicate<Word> { word in
-                levels.contains(word.hskLevel) && word.nextReviewDate <= today
-            },
-            sortBy: [SortDescriptor(\.nextReviewDate)]
-        )
-        
-        let dueWords = try context.fetch(dueDescriptor)
-        
-        // If we need more words, get new ones
-        var sessionWords = Array(dueWords.prefix(limit))
-        
-        if sessionWords.count < limit {
-            let newWordsNeeded = limit - sessionWords.count
-            let newWordsDescriptor = FetchDescriptor<Word>(
-                predicate: #Predicate<Word> { word in
-                    levels.contains(word.hskLevel) && word.timesSeen == 0
-                },
-                sortBy: [SortDescriptor(\.id)]
-            )
+        do {
+            // Load JSON file
+            guard let url = Bundle.main.url(forResource: jsonFile, withExtension: nil) else {
+                throw DataServiceError.fileNotFound
+            }
             
-            let newWords = try context.fetch(newWordsDescriptor)
-            sessionWords.append(contentsOf: newWords.prefix(newWordsNeeded))
+            let data = try Data(contentsOf: url)
+            let decoder = JSONDecoder()
+            let vocabularyItems = try decoder.decode([VocabularyItem].self, from: data)
+            
+            // Convert to Word models and insert
+            for item in vocabularyItems {
+                let word = Word(
+                    id: item.id,
+                    hanzi: item.hanzi,
+                    pinyin: item.pinyin,
+                    meaning: item.meaning,
+                    hskLevel: item.hskLevel,
+                    exampleSentence: item.exampleSentence,
+                    audioFileName: item.audioFileName
+                )
+                container.insert(word)
+            }
+            
+            container.save()
+            UserDefaults.standard.set(version, forKey: "data_version")
+            logger.log("Successfully imported \(vocabularyItems.count) words", level: .info)
+            
+        } catch {
+            logger.log("Failed to bootstrap data: \(error)", level: .error)
         }
-        
-        return sessionWords.shuffled()
     }
     
-    /// Calculate priority score for free tier algorithm
-    private func calculatePriorityScore(for word: Word) -> Int {
-        let correctPenalty = word.timesCorrect * 20
-        let recentPenalty = word.daysSinceLastSeen < 1 ? 50 : 0
-        return correctPenalty + recentPenalty
+    // MARK: - Fetch Words for Session
+    func fetchWordsForSession(levels: [Int], isPro: Bool, dailyLimit: Int = 30) async -> [Word] {
+        do {
+            var words: [Word] = []
+            
+            if isPro {
+                // Pro users: Get words due for review + new words
+                words = try await fetchDueWords(levels: levels)
+                let newWords = try await fetchNewWords(levels: levels, limit: max(0, dailyLimit - words.count))
+                words.append(contentsOf: newWords)
+            } else {
+                // Free users: Priority-based selection
+                words = try await fetchPriorityWords(levels: levels, limit: dailyLimit)
+            }
+            
+            logger.log("Fetched \(words.count) words for session", level: .debug)
+            return words.shuffled()
+            
+        } catch {
+            logger.log("Failed to fetch words for session: \(error)", level: .error)
+            return []
+        }
     }
     
-    // MARK: - Review Recording
-    
-    /// Record a review for a word
-    func recordReview(
-        for word: Word,
-        wasCorrect: Bool,
-        responseTime: TimeInterval = 0,
-        session: LearningSession? = nil
-    ) async throws {
-        
-        Logger.shared.debug("Recording review for word \(word.id): \(wasCorrect ? "Correct" : "Incorrect")")
+    // MARK: - Record Review
+    func recordReview(for word: Word, quality: Int) async {
+        // Create review record
+        let review = ReviewRecord(wordId: word.id, quality: quality)
+        container.insert(review)
         
         // Update word statistics
-        word.markAsSeen(wasCorrect: wasCorrect)
+        word.timesSeen += 1
+        word.lastSeen = Date()
         
-        // For premium users, update SRS
-        let settings = UserSettings.getOrCreate(in: context)
-        if settings.isPremium {
-            let quality = wasCorrect ? 5 : 1
-            updateSRS(for: word, quality: quality)
+        if quality >= 3 {
+            word.timesCorrect += 1
         }
         
-        // Create review record
-        let review = ReviewRecord(
-            wordId: word.id,
-            quality: wasCorrect ? 5 : 1,
-            wasCorrect: wasCorrect
-        )
-        review.responseTime = responseTime
-        review.sessionId = session?.id
-        
-        context.insert(review)
-        
-        // Update session if provided
-        if let session = session {
-            session.recordReview(word: word, wasCorrect: wasCorrect, responseTime: responseTime)
+        // Apply SRS algorithm for Pro users
+        if PurchaseManager.shared.isPremium {
+            applySpacedRepetition(to: word, quality: quality)
         }
         
-        // Save changes
-        try context.save()
-        
-        // Update cache
-        wordCache[word.id] = word
-    }
-    
-    /// Update SRS properties for a word
-    private func updateSRS(for word: Word, quality: Int) {
-        let algorithm = SRSAlgorithm()
-        let result = algorithm.calculateNext(
-            quality: quality,
-            repetitions: word.repetitions,
-            easeFactor: word.easeFactor,
-            interval: word.interval
-        )
-        
-        word.easeFactor = result.easeFactor
-        word.interval = result.interval
-        word.repetitions = result.repetitions
-        word.nextReviewDate = result.nextReviewDate
-        word.lastReviewQuality = quality
+        container.save()
+        logger.log("Recorded review for word: \(word.hanzi)", level: .debug)
     }
     
     // MARK: - Statistics
-    
-    /// Get daily review statistics for chart
-    func getDailyReviewStats(for pastDays: Int = 30) async throws -> [DailyStats] {
-        let startDate = Calendar.current.date(byAdding: .day, value: -pastDays, to: Date()) ?? Date()
-        
-        let descriptor = FetchDescriptor<ReviewRecord>(
-            predicate: #Predicate<ReviewRecord> { review in
-                review.reviewDate >= startDate
-            },
-            sortBy: [SortDescriptor(\.reviewDate)]
-        )
-        
-        let reviews = try context.fetch(descriptor)
-        
-        // Group by date
-        let grouped = Dictionary(grouping: reviews) { review in
-            Calendar.current.startOfDay(for: review.reviewDate)
-        }
-        
-        // Create stats for each day
-        var dailyStats: [DailyStats] = []
-        
-        for day in 0..<pastDays {
-            let date = Calendar.current.date(byAdding: .day, value: -day, to: Date()) ?? Date()
-            let dayStart = Calendar.current.startOfDay(for: date)
+    func getDailyReviewStats(for pastDays: Int = 30) async -> [Date: Int] {
+        do {
+            let calendar = Calendar.current
+            let endDate = Date()
+            let startDate = calendar.date(byAdding: .day, value: -pastDays, to: endDate)!
             
-            let dayReviews = grouped[dayStart] ?? []
-            let correct = dayReviews.filter { $0.wasCorrect }.count
-            let total = dayReviews.count
+            let predicate = #Predicate<ReviewRecord> { review in
+                review.reviewDate >= startDate && review.reviewDate <= endDate
+            }
             
-            dailyStats.append(DailyStats(
-                date: dayStart,
-                totalReviews: total,
-                correctReviews: correct,
-                accuracy: total > 0 ? Double(correct) / Double(total) : 0
-            ))
-        }
-        
-        return dailyStats.reversed()
-    }
-    
-    /// Get learning progress summary
-    func getLearningProgress() async throws -> LearningProgress {
-        let settings = UserSettings.getOrCreate(in: context)
-        
-        // Get total words learned
-        let learnedDescriptor = FetchDescriptor<Word>(
-            predicate: #Predicate<Word> { word in
-                word.timesSeen > 0
+            let reviews = try container.fetch(ReviewRecord.self, predicate: predicate)
+            
+            // Group by date
+            var stats: [Date: Int] = [:]
+            for review in reviews {
+                let dayStart = calendar.startOfDay(for: review.reviewDate)
+                stats[dayStart, default: 0] += 1
             }
-        )
-        let learnedWords = try context.fetch(learnedDescriptor)
-        
-        // Get mastered words (seen 5+ times with 80%+ accuracy)
-        let masteredWords = learnedWords.filter { word in
-            word.timesSeen >= 5 && word.accuracyRate >= 0.8
+            
+            return stats
+            
+        } catch {
+            logger.log("Failed to get daily review stats: \(error)", level: .error)
+            return [:]
+        }
+    }
+    
+    // MARK: - Private Helper Methods
+    private func fetchDueWords(levels: [Int]) async throws -> [Word] {
+        let now = Date()
+        let predicate = #Predicate<Word> { word in
+            levels.contains(word.hskLevel) && word.nextReviewDate <= now
         }
         
-        // Get words by HSK level
-        var wordsByLevel: [Int: Int] = [:]
-        for level in 1...6 {
-            let levelDescriptor = FetchDescriptor<Word>(
-                predicate: #Predicate<Word> { word in
-                    word.hskLevel == level && word.timesSeen > 0
-                }
-            )
-            wordsByLevel[level] = try context.fetch(levelDescriptor).count
+        return try container.fetch(Word.self, predicate: predicate)
+    }
+    
+    private func fetchNewWords(levels: [Int], limit: Int) async throws -> [Word] {
+        let predicate = #Predicate<Word> { word in
+            levels.contains(word.hskLevel) && word.timesSeen == 0
         }
         
-        return LearningProgress(
-            totalWordsLearned: learnedWords.count,
-            masteredWords: masteredWords.count,
-            currentStreak: settings.currentStreak,
-            longestStreak: settings.longestStreak,
-            totalStudyTime: settings.totalStudyTime,
-            wordsByLevel: wordsByLevel,
-            averageAccuracy: calculateAverageAccuracy(from: learnedWords)
-        )
+        var descriptor = FetchDescriptor<Word>(predicate: predicate)
+        descriptor.fetchLimit = limit
+        
+        return try container.mainContext.fetch(descriptor)
     }
     
-    private func calculateAverageAccuracy(from words: [Word]) -> Double {
-        let totalCorrect = words.reduce(0) { $0 + $1.timesCorrect }
-        let totalAttempts = words.reduce(0) { $0 + $1.timesSeen }
-        
-        guard totalAttempts > 0 else { return 0 }
-        return Double(totalCorrect) / Double(totalAttempts)
-    }
-    
-    // MARK: - HSK Level Management
-    
-    /// Get available words count for each HSK level
-    func getWordCountByLevel() async throws -> [Int: Int] {
-        var counts: [Int: Int] = [:]
-        
-        for level in 1...6 {
-            let descriptor = FetchDescriptor<Word>(
-                predicate: #Predicate<Word> { word in
-                    word.hskLevel == level
-                }
-            )
-            counts[level] = try context.fetchCount(descriptor)
+    private func fetchPriorityWords(levels: [Int], limit: Int) async throws -> [Word] {
+        let predicate = #Predicate<Word> { word in
+            levels.contains(word.hskLevel)
         }
         
-        return counts
-    }
-    
-    /// Get words for specific HSK level
-    func getWords(for level: Int, limit: Int? = nil) async throws -> [Word] {
-        var descriptor = FetchDescriptor<Word>(
-            predicate: #Predicate<Word> { word in
-                word.hskLevel == level
-            },
-            sortBy: [SortDescriptor(\.id)]
-        )
+        let words = try container.fetch(Word.self, predicate: predicate)
         
-        if let limit = limit {
-            descriptor.fetchLimit = limit
+        // Calculate priority scores
+        let scoredWords = words.map { word -> (Word, Double) in
+            let daysSinceLastSeen = Date().timeIntervalSince(word.lastSeen) / 86400
+            let score = Double(word.timesCorrect * 20) + (daysSinceLastSeen < 1 ? 50 : 0)
+            return (word, score)
         }
         
-        return try context.fetch(descriptor)
+        // Sort by score (lower is higher priority) and take limit
+        let sortedWords = scoredWords.sorted { $0.1 < $1.1 }
+        return Array(sortedWords.prefix(limit).map { $0.0 })
     }
     
-    // MARK: - Session Management
-    
-    /// Start a new learning session
-    func startLearningSession(type: String = "learning", goal: Int = 20, levels: [Int]) -> LearningSession {
-        let session = LearningSession(
-            sessionType: type,
-            sessionGoal: goal,
-            hskLevels: levels
+    private func applySpacedRepetition(to word: Word, quality: Int) {
+        // SM-2 algorithm implementation
+        let algorithm = SRSAlgorithm()
+        let (newEaseFactor, newInterval) = algorithm.calculate(
+            quality: quality,
+            previousEaseFactor: word.easeFactor,
+            previousInterval: word.interval
         )
         
-        let settings = UserSettings.getOrCreate(in: context)
-        session.isPremiumSession = settings.isPremium
-        
-        context.insert(session)
-        
-        // Update activity date
-        settings.lastActivityDate = Date()
-        settings.updateStreak()
-        
-        try? context.save()
-        
-        Logger.shared.info("Started new \(type) session with goal: \(goal)")
-        
-        return session
-    }
-    
-    /// Complete a learning session
-    func completeSession(_ session: LearningSession) {
-        session.complete()
-        
-        let settings = UserSettings.getOrCreate(in: context)
-        settings.recordSession(
-            duration: session.duration,
-            wordsLearned: session.wordsReviewed
-        )
-        
-        try? context.save()
-        
-        Logger.shared.info("Completed session: \(session.wordsReviewed) words in \(session.formattedDuration)")
-    }
-    
-    // MARK: - Reset Functions
-    
-    /// Reset progress for specific HSK levels
-    func resetProgress(for levels: [Int]) async throws {
-        let descriptor = FetchDescriptor<Word>(
-            predicate: #Predicate<Word> { word in
-                levels.contains(word.hskLevel)
-            }
-        )
-        
-        let words = try context.fetch(descriptor)
-        
-        for word in words {
-            word.resetProgress()
-        }
-        
-        Logger.shared.info("Reset progress for HSK levels: \(levels)")
-        
-        try context.save()
-    }
-    
-    /// Reset all user progress
-    func resetAllProgress() async throws {
-        await container.resetAllProgress()
-        Logger.shared.info("Reset all user progress")
-    }
-    
-    // MARK: - Search Functions
-    
-    /// Search words by pinyin or meaning
-    func searchWords(query: String, in levels: [Int]? = nil) async throws -> [Word] {
-        let lowercaseQuery = query.lowercased()
-        
-        var predicate: Predicate<Word>
-        
-        if let levels = levels {
-            predicate = #Predicate<Word> { word in
-                levels.contains(word.hskLevel) &&
-                (word.pinyin.localizedStandardContains(lowercaseQuery) ||
-                 word.meaning.localizedStandardContains(lowercaseQuery))
-            }
-        } else {
-            predicate = #Predicate<Word> { word in
-                word.pinyin.localizedStandardContains(lowercaseQuery) ||
-                word.meaning.localizedStandardContains(lowercaseQuery)
-            }
-        }
-        
-        let descriptor = FetchDescriptor<Word>(
-            predicate: predicate,
-            sortBy: [SortDescriptor(\.hskLevel), SortDescriptor(\.id)]
-        )
-        
-        return try context.fetch(descriptor)
-    }
-    
-    // MARK: - Favorites Management
-    
-    /// Toggle favorite status for a word
-    func toggleFavorite(for word: Word) {
-        word.isFavorited.toggle()
-        word.updatedAt = Date()
-        
-        try? context.save()
-        
-        Logger.shared.debug("Toggled favorite for word \(word.id): \(word.isFavorited)")
-    }
-    
-    /// Get all favorited words
-    func getFavoriteWords() async throws -> [Word] {
-        let descriptor = FetchDescriptor<Word>(
-            predicate: #Predicate<Word> { word in
-                word.isFavorited == true
-            },
-            sortBy: [SortDescriptor(\.hskLevel), SortDescriptor(\.id)]
-        )
-        
-        return try context.fetch(descriptor)
+        word.easeFactor = newEaseFactor
+        word.interval = newInterval
+        word.nextReviewDate = Calendar.current.date(
+            byAdding: .day,
+            value: newInterval,
+            to: Date()
+        ) ?? Date()
     }
 }
 
-// MARK: - Supporting Types
-
-struct DailyStats: Identifiable {
-    let id = UUID()
-    let date: Date
-    let totalReviews: Int
-    let correctReviews: Int
-    let accuracy: Double
+// MARK: - Error Types
+enum DataServiceError: LocalizedError {
+    case fileNotFound
+    case invalidData
+    case saveFailed
     
-    var formattedDate: String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        return formatter.string(from: date)
+    var errorDescription: String? {
+        switch self {
+        case .fileNotFound:
+            return "Data file not found"
+        case .invalidData:
+            return "Invalid data format"
+        case .saveFailed:
+            return "Failed to save data"
+        }
     }
 }
 
-struct LearningProgress {
-    let totalWordsLearned: Int
-    let masteredWords: Int
-    let currentStreak: Int
-    let longestStreak: Int
-    let totalStudyTime: TimeInterval
-    let wordsByLevel: [Int: Int]
-    let averageAccuracy: Double
-    
-    var formattedStudyTime: String {
-        let hours = Int(totalStudyTime) / 3600
-        let minutes = (Int(totalStudyTime) % 3600) / 60
-        return "\(hours)h \(minutes)m"
-    }
-    
-    var masteryRate: Double {
-        guard totalWordsLearned > 0 else { return 0 }
-        return Double(masteredWords) / Double(totalWordsLearned)
-    }
+// MARK: - Vocabulary Item for JSON Decoding
+private struct VocabularyItem: Codable {
+    let id: Int
+    let hanzi: String
+    let pinyin: String
+    let meaning: String
+    let hskLevel: Int
+    let exampleSentence: String?
+    let audioFileName: String?
 }

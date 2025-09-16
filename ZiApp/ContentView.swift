@@ -2,7 +2,7 @@
 //  ContentView.swift
 //  ZiApp
 //
-//  Created by Lê Nguyễn on 16/9/25.
+//  Main content view with tab navigation
 //
 
 import SwiftUI
@@ -10,52 +10,76 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
-
+    @StateObject private var purchaseManager = PurchaseManager.shared
+    @StateObject private var audioService = AudioService.shared
+    @State private var selectedTab = 0
+    @State private var showingPremiumUpgrade = false
+    
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
-                }
-                .onDelete(perform: deleteItems)
+        TabView(selection: $selectedTab) {
+            // Learning Tab
+            NavigationStack {
+                LearningView()
+                    .environmentObject(purchaseManager)
+                    .environmentObject(audioService)
             }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
+            .tabItem {
+                Label("Học", systemImage: "book.fill")
             }
-        } detail: {
-            Text("Select an item")
+            .tag(0)
+            
+            // Statistics Tab
+            NavigationStack {
+                StatisticsView()
+                    .environmentObject(purchaseManager)
+            }
+            .tabItem {
+                Label("Thống kê", systemImage: "chart.bar.fill")
+            }
+            .tag(1)
+            
+            // Settings Tab
+            NavigationStack {
+                SettingsView()
+                    .environmentObject(purchaseManager)
+            }
+            .tabItem {
+                Label("Cài đặt", systemImage: "gear")
+            }
+            .tag(2)
+        }
+        .accentColor(.blue)
+        .sheet(isPresented: $showingPremiumUpgrade) {
+            PremiumUpgradeView()
+                .environmentObject(purchaseManager)
+        }
+        .onAppear {
+            setupInitialData()
         }
     }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+    
+    private func setupInitialData() {
+        // Check if initial data needs to be loaded
+        let hasLoadedData = UserDefaults.standard.bool(forKey: "hasLoadedInitialData")
+        
+        if !hasLoadedData {
+            Task {
+                await loadInitialVocabulary()
             }
         }
     }
-}
-
-#Preview {
-    ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+    
+    @MainActor
+    private func loadInitialVocabulary() async {
+        do {
+            // Use DataService to bootstrap initial data
+            let dataService = DataService.shared
+            await dataService.bootstrapInitialData(from: "vocabulary_v1.2.json", version: "1.2")
+            
+            UserDefaults.standard.set(true, forKey: "hasLoadedInitialData")
+            Logger.shared.log("Initial vocabulary loaded successfully", level: .info)
+        } catch {
+            Logger.shared.log("Failed to load initial vocabulary: \(error)", level: .error)
+        }
+    }
 }

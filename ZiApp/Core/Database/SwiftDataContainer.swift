@@ -2,249 +2,114 @@
 //  SwiftDataContainer.swift
 //  ZiApp
 //
-//  SwiftData container configuration and management
+//  SwiftData configuration and container management
 //
 
 import Foundation
 import SwiftData
-import SwiftUI
 
+/// Manages the SwiftData model container for the app
 @MainActor
-class SwiftDataContainer: ObservableObject {
+final class SwiftDataContainer {
     static let shared = SwiftDataContainer()
     
     let container: ModelContainer
-    let mainContext: ModelContext
-    
-    // Background context for heavy operations
-    private let backgroundQueue = DispatchQueue(label: "com.zi.database", qos: .background)
+    private let logger = Logger.shared
     
     private init() {
-        // Define schema
-        let schema = Schema([
-            Word.self,
-            UserSettings.self,
-            LearningSession.self,
-            ReviewRecord.self
-        ])
-        
-        // Configure model
-        let modelConfiguration = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: false,
-            allowsSave: true,
-            groupContainer: .automatic,
-            cloudKitDatabase: .none // Offline only for v1.0
-        )
-        
         do {
-            // Initialize container
+            let schema = Schema([
+                Word.self,
+                LearningSession.self,
+                ReviewRecord.self,
+                UserProgress.self,
+                UserSettings.self
+            ])
+            
+            let modelConfiguration = ModelConfiguration(
+                schema: schema,
+                isStoredInMemoryOnly: false,
+                allowsSave: true,
+                groupContainer: .automatic,
+                cloudKitDatabase: .none
+            )
+            
             container = try ModelContainer(
                 for: schema,
                 configurations: [modelConfiguration]
             )
             
-            // Create main context
-            mainContext = ModelContext(container)
-            mainContext.autosaveEnabled = true
-            
-            // Perform initial setup
-            Task { @MainActor in
-                await setupInitialData()
-            }
+            logger.log("SwiftData container initialized successfully", level: .info)
             
         } catch {
-            fatalError("Failed to initialize SwiftData container: \(error)")
+            logger.log("Failed to create ModelContainer: \(error)", level: .error)
+            fatalError("Could not create ModelContainer: \(error)")
         }
     }
     
-    // MARK: - Context Creation
-    
-    func createBackgroundContext() -> ModelContext {
-        let context = ModelContext(container)
-        context.autosaveEnabled = false
-        return context
+    // MARK: - Context Management
+    var mainContext: ModelContext {
+        container.mainContext
     }
     
-    // MARK: - Save Operations
-    
-    func save(context: ModelContext? = nil) {
-        let contextToSave = context ?? mainContext
-        
+    @MainActor
+    func save() {
         do {
-            if contextToSave.hasChanges {
-                try contextToSave.save()
-                Logger.shared.info("Database saved successfully")
-            }
+            try mainContext.save()
+            logger.log("Context saved successfully", level: .debug)
         } catch {
-            Logger.shared.error("Failed to save context: \(error)")
+            logger.log("Failed to save context: \(error)", level: .error)
         }
     }
     
-    // MARK: - Initial Data Setup
-    
-    @MainActor
-    private func setupInitialData() async {
-        // Check if data already exists
-        let descriptor = FetchDescriptor<Word>(
-            predicate: nil,
-            sortBy: [SortDescriptor(\.id)]
-        )
+    // MARK: - Data Operations
+    func fetch<T: PersistentModel>(_ type: T.Type,
+                                   predicate: Predicate<T>? = nil,
+                                   sortBy: [SortDescriptor<T>] = []) throws -> [T] {
+        var descriptor = FetchDescriptor<T>(predicate: predicate)
+        descriptor.sortBy = sortBy
         
-        do {
-            let existingWords = try mainContext.fetch(descriptor)
-            
-            if existingWords.isEmpty {
-                Logger.shared.info("No existing data found. Importing initial vocabulary...")
-                await importInitialVocabulary()
-            } else {
-                Logger.shared.info("Found \(existingWords.count) existing words")
-                await checkForDataUpdates()
-            }
-            
-            // Ensure UserSettings exists
-            _ = UserSettings.getOrCreate(in: mainContext)
-            save()
-            
-        } catch {
-            Logger.shared.error("Failed to fetch existing data: \(error)")
-        }
+        return try mainContext.fetch(descriptor)
     }
     
-    // MARK: - Data Import
-    
-    @MainActor
-    private func importInitialVocabulary() async {
-        guard let url = Bundle.main.url(forResource: "vocabulary_v1.2", withExtension: "json"),
-              let data = try? Data(contentsOf: url) else {
-            Logger.shared.error("Failed to load vocabulary JSON file")
-            return
-        }
-        
-        do {
-            let decoder = JSONDecoder()
-            let vocabularyItems = try decoder.decode([VocabularyItem].self, from: data)
-            
-            Logger.shared.info("Importing \(vocabularyItems.count) words...")
-            
-            // Use background context for bulk import
-            await withTaskGroup(of: Void.self) { group in
-                for item in vocabularyItems {
-                    group.addTask { @MainActor in
-                        let word = Word(
-                            id: item.id,
-                            hanzi: item.hanzi,
-                            pinyin: item.pinyin,
-                            meaning: item.meaning,
-                            hskLevel: item.hskLevel,
-                            exampleSentence: item.exampleSentence,
-                            exampleTranslation: item.exampleTranslation,
-                            audioFileName: item.audioFileName
-                        )
-                        self.mainContext.insert(word)
-                    }
-                }
-            }
-            
-            save()
-            Logger.shared.info("Successfully imported vocabulary")
-            
-        } catch {
-            Logger.shared.error("Failed to decode vocabulary JSON: \(error)")
-        }
+    func delete<T: PersistentModel>(_ model: T) {
+        mainContext.delete(model)
+        logger.log("Deleted model: \(type(of: model))", level: .debug)
     }
     
-    // MARK: - Data Updates
-    
-    @MainActor
-    private func checkForDataUpdates() async {
-        // Check if newer version is available
-        let settings = UserSettings.getOrCreate(in: mainContext)
-        let currentVersion = settings.dataVersion
-        let bundledVersion = "1.2" // This should come from a config file
-        
-        if currentVersion < bundledVersion {
-            Logger.shared.info("Data update available: \(currentVersion) -> \(bundledVersion)")
-            await performDataMigration(from: currentVersion, to: bundledVersion)
-        }
+    func insert<T: PersistentModel>(_ model: T) {
+        mainContext.insert(model)
+        logger.log("Inserted model: \(type(of: model))", level: .debug)
     }
     
-    @MainActor
-    private func performDataMigration(from oldVersion: String, to newVersion: String) async {
-        // Implement migration logic based on version differences
-        // For now, just update the version
-        let settings = UserSettings.getOrCreate(in: mainContext)
-        settings.dataVersion = newVersion
-        save()
+    // MARK: - Migration Support
+    func performMigrationIfNeeded() {
+        // Check current schema version
+        let currentVersion = UserDefaults.standard.string(forKey: "schema_version") ?? "1.0"
+        let targetVersion = "1.2"
         
-        Logger.shared.info("Data migrated from \(oldVersion) to \(newVersion)")
+        if currentVersion < targetVersion {
+            logger.log("Migrating from version \(currentVersion) to \(targetVersion)", level: .info)
+            // Perform migration logic here
+            UserDefaults.standard.set(targetVersion, forKey: "schema_version")
+        }
     }
     
     // MARK: - Batch Operations
-    
-    @MainActor
-    func batchUpdate<T: PersistentModel>(_ type: T.Type, updates: @escaping (T) -> Void) async throws {
-        let descriptor = FetchDescriptor<T>()
-        let items = try mainContext.fetch(descriptor)
-        
-        for item in items {
-            updates(item)
+    func batchInsert<T: PersistentModel>(_ models: [T]) throws {
+        for model in models {
+            mainContext.insert(model)
         }
-        
-        save()
+        try mainContext.save()
+        logger.log("Batch inserted \(models.count) models", level: .info)
     }
     
-    // MARK: - Reset Operations
-    
-    @MainActor
-    func resetAllProgress() async {
-        do {
-            // Reset all words
-            let wordDescriptor = FetchDescriptor<Word>()
-            let words = try mainContext.fetch(wordDescriptor)
-            
-            for word in words {
-                word.resetProgress()
-            }
-            
-            // Reset user settings
-            let settings = UserSettings.getOrCreate(in: mainContext)
-            settings.resetAllProgress()
-            
-            // Delete all sessions and reviews
-            try mainContext.delete(model: LearningSession.self)
-            try mainContext.delete(model: ReviewRecord.self)
-            
-            save()
-            
-            Logger.shared.info("All progress reset successfully")
-            
-        } catch {
-            Logger.shared.error("Failed to reset progress: \(error)")
+    func deleteAll<T: PersistentModel>(_ type: T.Type) throws {
+        let models = try fetch(type)
+        for model in models {
+            mainContext.delete(model)
         }
-    }
-}
-
-// MARK: - Supporting Types
-
-struct VocabularyItem: Codable {
-    let id: Int
-    let hanzi: String
-    let pinyin: String
-    let meaning: String
-    let hskLevel: Int
-    let exampleSentence: String?
-    let exampleTranslation: String?
-    let audioFileName: String?
-}
-
-// MARK: - SwiftUI Environment
-
-extension View {
-    func withDataContainer() -> some View {
-        self
-            .modelContainer(SwiftDataContainer.shared.container)
-            .environment(\.modelContext, SwiftDataContainer.shared.mainContext)
-            .environmentObject(SwiftDataContainer.shared)
+        try mainContext.save()
+        logger.log("Deleted all models of type \(type)", level: .info)
     }
 }
