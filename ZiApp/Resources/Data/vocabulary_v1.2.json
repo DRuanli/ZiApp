@@ -1,0 +1,302 @@
+[
+  {
+    "id": 1,
+    "hanzi": "爱",
+    "pinyin": "ài",
+    "meaning": "yêu, tình yêu",
+    "hskLevel": 1,
+    "exampleSentence": "我爱你。",
+    "exampleTranslation": "Tôi yêu bạn.",
+    "audioFileName": "ai4.mp3"
+  },
+  {
+    "id": 2,
+    "hanzi": "八",
+    "pinyin": "bā",
+    "meaning": "tám, số 8",
+    "hskLevel": 1,
+    "exampleSentence": "他八岁了。",
+    "exampleTranslation": "Cậu ấy tám tuổi.",
+    "audioFileName": "ba1.mp3"
+  },
+  {
+    "id": 3,
+    "hanzi": "爸爸",
+    "pinyin": "bàba",
+    "meaning": "bố, ba, cha",
+    "hskLevel": 1,
+    "exampleSentence": "我爸爸是医生。",
+    "exampleTranslation": "Bố tôi là bác sĩ.",
+    "audioFileName": "baba4.mp3"
+  },
+  {
+    "id": 4,
+    "hanzi": "杯子",
+    "pinyin": "bēizi",
+    "meaning": "cốc, ly, chén",
+    "hskLevel": 1,
+    "exampleSentence": "请给我一个杯子。",
+    "exampleTranslation": "Xin cho tôi một cái cốc.",
+    "audioFileName": "beizi1.mp3"
+  },
+  {
+    "id": 5,
+    "hanzi": "北京",
+    "pinyin": "Běijīng",
+    "meaning": "Bắc Kinh",
+    "hskLevel": 1,
+    "exampleSentence": "我住在北京。",
+    "exampleTranslation": "Tôi sống ở Bắc Kinh.",
+    "audioFileName": "beijing3.mp3"
+  },
+  {
+    "id": 6,
+    "hanzi": "本",
+    "pinyin": "běn",
+    "meaning": "cuốn (sách), quyển",
+    "hskLevel": 1,
+    "exampleSentence": "这本书很好看。",
+    "exampleTranslation": "Cuốn sách này rất hay.",
+    "audioFileName": "ben3.mp3"
+  },
+  {
+    "id": 7,
+    "hanzi": "不",
+    "pinyin": "bù",
+    "meaning": "không, chẳng",
+    "hskLevel": 1,
+    "exampleSentence": "我不喜欢咖啡。",
+    "exampleTranslation": "Tôi không thích cà phê.",
+    "audioFileName": "bu4.mp3"
+  },
+  {
+    "id": 8,
+    "hanzi": "菜",
+    "pinyin": "cài",
+    "meaning": "rau, món ăn",
+    "hskLevel": 1,
+    "exampleSentence": "这个菜很好吃。",
+    "exampleTranslation": "Món ăn này rất ngon.",
+    "audioFileName": "cai4.mp3"
+  },
+  {
+    "id": 9,
+    "hanzi": "茶",
+    "pinyin": "chá",
+    "meaning": "trà, nước trà",
+    "hskLevel": 1,
+    "exampleSentence": "我喜欢喝茶。",
+    "exampleTranslation": "Tôi thích uống trà.",
+    "audioFileName": "cha2.mp3"
+  },
+  {
+    "id": 10,
+    "hanzi": "吃",
+    "pinyin": "chī",
+    "meaning": "ăn",
+    "hskLevel": 1,
+    "exampleSentence": "我们去吃饭吧。",
+    "exampleTranslation": "Chúng ta đi ăn cơm thôi.",
+    "audioFileName": "chi1.mp3"
+  },
+  {
+    "id": 11,
+    "hanzi": "出租车",
+    "pinyin": "chūzūchē",
+    "meaning": "xe taxi",
+    "hskLevel": 1,
+    "exampleSentence": "我坐出租车去机场。",
+    "exampleTranslation": "Tôi đi taxi đến sân bay.",
+    "audioFileName": "chuzuche1.mp3"
+  },
+  {
+    "id": 12,
+    "hanzi": "打",
+    "pinyin": "dǎ",
+    "meaning": "đánh, gọi (điện thoại)",
+    "hskLevel": 1,
+    "exampleSentence": "我打电话给你。",
+    "exampleTranslation": "Tôi gọi điện cho bạn.",
+    "audioFileName": "da3.mp3"
+  },
+  {
+    "id": 13,
+    "hanzi": "大",
+    "pinyin": "dà",
+    "meaning": "to, lớn",
+    "hskLevel": 1,
+    "exampleSentence": "这个房子很大。",
+    "exampleTranslation": "Ngôi nhà này rất lớn.",
+    "audioFileName": "da4.mp3"
+  },
+  {
+    "id": 14,
+    "hanzi": "的",
+    "pinyin": "de",
+    "meaning": "của (sở hữu)",
+    "hskLevel": 1,
+    "exampleSentence": "这是我的书。",
+    "exampleTranslation": "Đây là sách của tôi.",
+    "audioFileName": "de.mp3"
+  },
+  {
+    "id": 15,
+    "hanzi": "点",
+    "pinyin": "diǎn",
+    "meaning": "giờ (thời gian), chút",
+    "hskLevel": 1,
+    "exampleSentence": "现在三点了。",
+    "exampleTranslation": "Bây giờ là ba giờ rồi.",
+    "audioFileName": "dian3.mp3"
+  },
+  {
+    "id": 16,
+    "hanzi": "电脑",
+    "pinyin": "diànnǎo",
+    "meaning": "máy tính",
+    "hskLevel": 1,
+    "exampleSentence": "我用电脑工作。",
+    "exampleTranslation": "Tôi dùng máy tính để làm việc.",
+    "audioFileName": "diannao4.mp3"
+  },
+  {
+    "id": 17,
+    "hanzi": "电视",
+    "pinyin": "diànshì",
+    "meaning": "ti vi, truyền hình",
+    "hskLevel": 1,
+    "exampleSentence": "我看电视。",
+    "exampleTranslation": "Tôi xem ti vi.",
+    "audioFileName": "dianshi4.mp3"
+  },
+  {
+    "id": 18,
+    "hanzi": "电影",
+    "pinyin": "diànyǐng",
+    "meaning": "phim, điện ảnh",
+    "hskLevel": 1,
+    "exampleSentence": "这个电影很好看。",
+    "exampleTranslation": "Bộ phim này rất hay.",
+    "audioFileName": "dianying4.mp3"
+  },
+  {
+    "id": 19,
+    "hanzi": "东西",
+    "pinyin": "dōngxi",
+    "meaning": "đồ vật, thứ",
+    "hskLevel": 1,
+    "exampleSentence": "这个东西多少钱？",
+    "exampleTranslation": "Cái này bao nhiêu tiền?",
+    "audioFileName": "dongxi1.mp3"
+  },
+  {
+    "id": 20,
+    "hanzi": "都",
+    "pinyin": "dōu",
+    "meaning": "đều, tất cả",
+    "hskLevel": 1,
+    "exampleSentence": "我们都是学生。",
+    "exampleTranslation": "Chúng tôi đều là học sinh.",
+    "audioFileName": "dou1.mp3"
+  },
+  {
+    "id": 21,
+    "hanzi": "读",
+    "pinyin": "dú",
+    "meaning": "đọc",
+    "hskLevel": 1,
+    "exampleSentence": "我喜欢读书。",
+    "exampleTranslation": "Tôi thích đọc sách.",
+    "audioFileName": "du2.mp3"
+  },
+  {
+    "id": 22,
+    "hanzi": "对不起",
+    "pinyin": "duìbuqǐ",
+    "meaning": "xin lỗi",
+    "hskLevel": 1,
+    "exampleSentence": "对不起，我迟到了。",
+    "exampleTranslation": "Xin lỗi, tôi đến muộn.",
+    "audioFileName": "duibuqi4.mp3"
+  },
+  {
+    "id": 23,
+    "hanzi": "多",
+    "pinyin": "duō",
+    "meaning": "nhiều",
+    "hskLevel": 1,
+    "exampleSentence": "这里人很多。",
+    "exampleTranslation": "Ở đây người rất đông.",
+    "audioFileName": "duo1.mp3"
+  },
+  {
+    "id": 24,
+    "hanzi": "多少",
+    "pinyin": "duōshao",
+    "meaning": "bao nhiêu",
+    "hskLevel": 1,
+    "exampleSentence": "这个多少钱？",
+    "exampleTranslation": "Cái này bao nhiêu tiền?",
+    "audioFileName": "duoshao1.mp3"
+  },
+  {
+    "id": 25,
+    "hanzi": "儿子",
+    "pinyin": "érzi",
+    "meaning": "con trai",
+    "hskLevel": 1,
+    "exampleSentence": "我儿子五岁了。",
+    "exampleTranslation": "Con trai tôi năm tuổi rồi.",
+    "audioFileName": "erzi2.mp3"
+  },
+  {
+    "id": 26,
+    "hanzi": "二",
+    "pinyin": "èr",
+    "meaning": "hai, số 2",
+    "hskLevel": 1,
+    "exampleSentence": "二加二等于四。",
+    "exampleTranslation": "Hai cộng hai bằng bốn.",
+    "audioFileName": "er4.mp3"
+  },
+  {
+    "id": 27,
+    "hanzi": "饭店",
+    "pinyin": "fàndiàn",
+    "meaning": "nhà hàng, khách sạn",
+    "hskLevel": 1,
+    "exampleSentence": "我们去饭店吃饭。",
+    "exampleTranslation": "Chúng ta đến nhà hàng ăn cơm.",
+    "audioFileName": "fandian4.mp3"
+  },
+  {
+    "id": 28,
+    "hanzi": "飞机",
+    "pinyin": "fēijī",
+    "meaning": "máy bay",
+    "hskLevel": 1,
+    "exampleSentence": "我坐飞机去上海。",
+    "exampleTranslation": "Tôi đi máy bay đến Thượng Hải.",
+    "audioFileName": "feiji1.mp3"
+  },
+  {
+    "id": 29,
+    "hanzi": "分钟",
+    "pinyin": "fēnzhōng",
+    "meaning": "phút",
+    "hskLevel": 1,
+    "exampleSentence": "请等我五分钟。",
+    "exampleTranslation": "Xin đợi tôi năm phút.",
+    "audioFileName": "fenzhong1.mp3"
+  },
+  {
+    "id": 30,
+    "hanzi": "高兴",
+    "pinyin": "gāoxìng",
+    "meaning": "vui vẻ, vui mừng",
+    "hskLevel": 1,
+    "exampleSentence": "我很高兴认识你。",
+    "exampleTranslation": "Tôi rất vui được biết bạn.",
+    "audioFileName": "gaoxing1.mp3"
+  }
+]
